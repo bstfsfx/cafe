@@ -1,26 +1,11 @@
-import express, { type Request as ExpressRequest, type Response as ExpressResponse } from "express";
+import express, { type Express, type Request as ExpressRequest, type Response as ExpressResponse } from "express";
 import { Readable } from "node:stream";
-import { fileURLToPath } from "node:url";
-import { createServer as createViteServer } from "vite";
 
-const projectRoot = fileURLToPath(new URL(".", import.meta.url));
-const port = Number(process.env.PORT || 3000);
-const app = express();
-app.disable("x-powered-by");
-app.use(express.static(`${projectRoot}/public`, { fallthrough: true, maxAge: "1h" }));
-
-const vite = await createViteServer({
-  root: projectRoot,
-  server: { middlewareMode: true, host: "0.0.0.0" },
-  appType: "custom",
-});
-app.use(vite.middlewares);
-
-function firstHeader(value: string | string[] | undefined): string | undefined {
+export function firstHeader(value: string | string[] | undefined): string | undefined {
   return (Array.isArray(value) ? value[0] : value)?.split(",")[0]?.trim();
 }
 
-function toWebRequest(req: ExpressRequest): Request {
+export function toWebRequest(req: ExpressRequest): Request {
   const forwardedHost = firstHeader(req.headers["x-forwarded-host"]);
   const host = forwardedHost || firstHeader(req.headers.host) || "localhost:3000";
   const originHeader = req.headers.origin;
@@ -42,7 +27,7 @@ function toWebRequest(req: ExpressRequest): Request {
   return new Request(url, { method, headers, body, duplex: "half" } as RequestInit);
 }
 
-async function sendResponse(response: globalThis.Response, res: ExpressResponse): Promise<void> {
+export async function sendResponse(response: globalThis.Response, res: ExpressResponse): Promise<void> {
   res.status(response.status);
   response.headers.forEach((value, name) => {
     if (name.toLowerCase() !== "set-cookie") res.setHeader(name, value);
@@ -57,25 +42,49 @@ async function sendResponse(response: globalThis.Response, res: ExpressResponse)
   res.end(Buffer.from(await response.arrayBuffer()));
 }
 
-app.use(async (req, res) => {
-  try {
-    const { handleRequest } = await vite.ssrLoadModule("/src/server/handle-request.ts");
-    const response = await handleRequest(toWebRequest(req));
-    await sendResponse(response, res);
-  } catch (error) {
-    vite.ssrFixStacktrace(error as Error);
-    console.error("Storefront request failed:", error);
-    if (!res.headersSent) res.status(500).type("text/plain").send("布藝咖啡店面暫時無法載入，請稍後再試。");
-    else res.end();
+export interface CreateAppOptions {
+  /**
+   * In dev, pass a Vite middleware-mode dev server. Vite will SSR-transform
+   * /src/server/handle-request.ts on demand.
+   * In production, omit (or pass null) and pre-built artifacts under
+   * ./dist-server must be present (see `pnpm build`).
+   */
+  loadHandleRequest?: () => Promise<{ handleRequest: (req: Request) => Promise<Response> }>;
+  staticDir?: string;
+}
+
+/**
+ * Build the Express app used both in dev (with a Vite dev server attached)
+ * and on Vercel (as a serverless function). The caller decides how to source
+ * the handleRequest module — Vite SSR in dev, dynamic import of the bundled
+ * build artifact in production.
+ */
+export async function createApp(options: CreateAppOptions): Promise<Express> {
+  const { loadHandleRequest, staticDir } = options;
+  if (!loadHandleRequest) throw new Error("createApp requires loadHandleRequest");
+
+  const app = express();
+  app.disable("x-powered-by");
+  if (staticDir) {
+    // Public/ assets (favicon, robots, hand-made hero photos).
+    app.use(express.static(staticDir, { fallthrough: true, maxAge: "1h" }));
+    // Vite build output: only /assets/* (avoid serving dist/client/index.html
+    // which is just a build-time entry, not a route).
+    const distClient = staticDir.replace(/\/public\/?$/, "") + "/dist/client/assets";
+    app.use("/assets", express.static(distClient, { fallthrough: true, maxAge: "1y", immutable: true }));
   }
-});
 
-const server = app.listen(port, "0.0.0.0", () => {
-  console.log(`布藝咖啡 SSR listening on 0.0.0.0:${port}`);
-});
-
-for (const signal of ["SIGINT", "SIGTERM"] as const) {
-  process.on(signal, () => {
-    server.close(() => void vite.close());
+  app.use(async (req, res) => {
+    try {
+      const mod = await loadHandleRequest();
+      const response = await mod.handleRequest(toWebRequest(req));
+      await sendResponse(response, res);
+    } catch (error) {
+      console.error("Storefront request failed:", error);
+      if (!res.headersSent) res.status(500).type("text/plain").send("布藝咖啡店面暫時無法載入，請稍後再試。");
+      else res.end();
+    }
   });
+
+  return app;
 }

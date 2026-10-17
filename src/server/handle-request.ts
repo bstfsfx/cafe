@@ -7,6 +7,8 @@ import {
 } from "@shopify/hydrogen";
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { App } from "../App";
 import type { AppEnvelope, ShopRuntime } from "../types";
 import { loadPageData } from "./page-data";
@@ -157,7 +159,51 @@ function getCanonicalUrl(page: AppEnvelope["page"], siteUrl?: string): string | 
   }
 }
 
-function renderDocument(data: AppEnvelope): string {
+let clientAssets: { stylesheet: string; clientScript: string } | null = null;
+
+/**
+ * Resolve the CSS + JS bundle URLs at server cold-start. In dev we keep the
+ * `/src/styles.css` and `/src/client.tsx` paths so Vite's middleware can
+ * transform them on demand; in production we read the hashed asset paths
+ * directly from `dist/client/index.html`.
+ */
+function resolveClientAssets(): { stylesheet: string; clientScript: string } | Promise<{ stylesheet: string; clientScript: string }> {
+  if (clientAssets) return clientAssets;
+  const isProduction = process.env.NODE_ENV === "production" || process.env.BUKAAFE_PRODUCTION === "1";
+  if (!isProduction) {
+    clientAssets = { stylesheet: "/src/styles.css", clientScript: "/src/client.tsx" };
+    return clientAssets;
+  }
+  return (async () => {
+    try {
+      const { existsSync } = await import("node:fs");
+      const candidates = [
+        join(process.cwd(), "dist", "client", "index.html"),
+        join(process.cwd(), "..", "dist", "client", "index.html"),
+      ];
+      let html: string | null = null;
+      for (const candidate of candidates) {
+        if (existsSync(candidate)) {
+          html = readFileSync(candidate, "utf8");
+          break;
+        }
+      }
+      if (!html) throw new Error("dist/client/index.html not found");
+      const cssMatch = html.match(/<link[^>]*rel="stylesheet"[^>]*href="(\/assets\/[^"]+)"/);
+      const jsMatch = html.match(/<script[^>]*type="module"[^>]*src="(\/assets\/[^"]+)"/);
+      clientAssets = {
+        stylesheet: cssMatch?.[1] ?? "/src/styles.css",
+        clientScript: jsMatch?.[1] ?? "/src/client.tsx",
+      };
+      return clientAssets;
+    } catch {
+      clientAssets = { stylesheet: "/src/styles.css", clientScript: "/src/client.tsx" };
+      return clientAssets;
+    }
+  })();
+}
+
+async function renderDocument(data: AppEnvelope): Promise<string> {
   const appHtml = renderToString(createElement(App, { data }));
   const title = escapeHtml(data.page.title);
   const description = escapeHtml(data.page.description);
@@ -166,6 +212,7 @@ function renderDocument(data: AppEnvelope): string {
   const canonicalUrl = getCanonicalUrl(data.page, data.shop.siteUrl);
   const canonical = canonicalUrl ? `<link rel="canonical" href="${escapeHtml(canonicalUrl)}">` : "";
   const ogUrl = canonicalUrl ? `<meta property="og:url" content="${escapeHtml(canonicalUrl)}">` : "";
+  const assets = await resolveClientAssets();
   const structuredData = [
     canonical,
     ogUrl,
@@ -173,7 +220,7 @@ function renderDocument(data: AppEnvelope): string {
       ? `<script id="page-structured-data" type="application/ld+json">${escapeJson(data.page.structuredData)}</script>`
       : "",
   ].join("");
-  return `<!doctype html><html lang="zh-Hant-TW"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="${description}"><meta property="og:type" content="${data.page.ogType ?? "website"}"><meta property="og:title" content="${title}"><meta property="og:description" content="${description}">${ogImage}${robots}${structuredData}<meta name="theme-color" content="#f3efe8"><title>${title}</title><link rel="preconnect" href="https://cdn.shopify.com"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/src/styles.css"></head><body><div id="app">${appHtml}</div><script id="__APP_DATA__" type="application/json">${escapeJson(data)}</script><script type="module" src="/src/client.tsx"></script></body></html>`;
+  return `<!doctype html><html lang="zh-Hant-TW"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="${description}"><meta property="og:type" content="${data.page.ogType ?? "website"}"><meta property="og:title" content="${title}"><meta property="og:description" content="${description}">${ogImage}${robots}${structuredData}<meta name="theme-color" content="#f3efe8"><title>${title}</title><link rel="preconnect" href="https://cdn.shopify.com"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="${assets.stylesheet}"></head><body><div id="app">${appHtml}</div><script id="__APP_DATA__" type="application/json">${escapeJson(data)}</script><script type="module" src="${assets.clientScript}"></script></body></html>`;
 }
 
 export async function handleRequest(request: Request): Promise<Response> {
@@ -223,7 +270,7 @@ export async function handleRequest(request: Request): Promise<Response> {
       headers: { "content-type": `${PAGE_DATA_ACCEPT}; charset=utf-8`, "cache-control": "private, no-store" },
     });
   } else {
-    response = new Response(renderDocument(data), {
+    response = new Response(await renderDocument(data), {
       status,
       headers: { "content-type": "text/html; charset=utf-8", "cache-control": "private, no-store" },
     });
