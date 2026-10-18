@@ -14,3 +14,4 @@ demo-*.png
 .vercel
 .env*.local
 deployment.md
+TODO.md

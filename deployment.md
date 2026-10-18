@@ -54,6 +54,7 @@ origin	https://github.com/bstfsfx/cafe.git (push)
 | `4da9809` | Wire Vercel serverless function to SSR module via Web Request bridge |
 | `45a5c2a` | **Fix**: bundle asset index with SSR module so Vercel serverless can read it |
 | `27aac52` | Add deployment.md — full record of GitHub + Vercel deployment |
+| `c511dd8` | Rename GitHub repository to `bstfsfx/cafe` and update references |
 
 ### Repository rename
 
@@ -128,6 +129,7 @@ pnpm build
 # && cp -R public/. dist/client/ \
 # && mkdir -p dist-server-tmp \
 # && vite build --ssr src/server/handle-request.ts --outDir=dist-server-tmp --emptyOutDir \
+# && mkdir -p dist-server \
 # && cp dist-server-tmp/handle-request.js dist-server/ \
 # && rm -rf dist-server-tmp \
 # && cp dist/client/index.html dist-server/client-assets.html \
@@ -370,6 +372,7 @@ Two changes:
    # && cp -R public/. dist/client/ \
    # && mkdir -p dist-server-tmp \
    # && vite build --ssr src/server/handle-request.ts --outDir=dist-server-tmp --emptyOutDir \
+   # && mkdir -p dist-server \
    # && cp dist-server-tmp/handle-request.js dist-server/ \
    # && rm -rf dist-server-tmp \
    # && cp dist/client/index.html dist-server/client-assets.html \
@@ -442,6 +445,19 @@ hydrates (Hydrogen CartProvider, CartForm, analytics, etc.).
    file at `/`, beating the `/(.*)` → `/api/index` rewrite. The
    build script now deletes that file after copying it to
    `dist-server/client-assets.html`, so the rewrite wins.
+10. **Git-triggered builds failed on Vercel's clean checkout** —
+    after the repository rename, the first auto-deploy (and two
+    earlier pushes) failed with
+    `cp: cannot create regular file 'dist-server/': Not a directory`.
+    The build script ran `cp dist-server-tmp/handle-request.js dist-server/`
+    without ever creating `dist-server/` (only `dist-server-tmp`).
+    Locally the step silently succeeded because a stale `dist-server/`
+    directory from previous builds already existed; Vercel's clone has
+    no such directory (`dist-server/` is gitignored), and `cp` into a
+    trailing-slash non-directory fails. Fixed by adding
+    `mkdir -p dist-server` before the copy. The failed builds did not
+    affect https://bukaafe.vercel.app — Vercel keeps the last READY
+    deployment aliased while new builds error.
 
 ## 9. Open follow-ups
 
