@@ -11,7 +11,7 @@ Vercel production deployment.
 | | |
 | --- | --- |
 | Local path | `/Users/bs/Documents/Coding/Sites/bukaafe` |
-| GitHub | https://github.com/bstfsfx/bukaafe-storefront (public) |
+| GitHub | https://github.com/bstfsfx/cafe (public; renamed from `bukaafe-storefront`) |
 | Default branch | `main` |
 | Vercel project | `bstfsfxs-projects/bukaafe` |
 | Production URL | **https://bukaafe.vercel.app** |
@@ -41,8 +41,8 @@ Vercel production deployment.
 ### Origin
 
 ```
-origin	https://github.com/bstfsfx/bukaafe-storefront.git (fetch)
-origin	https://github.com/bstfsfx/bukaafe-storefront.git (push)
+origin	https://github.com/bstfsfx/cafe.git (fetch)
+origin	https://github.com/bstfsfx/cafe.git (push)
 ```
 
 ### Commit history (oldest → newest)
@@ -53,6 +53,24 @@ origin	https://github.com/bstfsfx/bukaafe-storefront.git (push)
 | `8756302` | Add Vercel deployment scaffold + production build pipeline |
 | `4da9809` | Wire Vercel serverless function to SSR module via Web Request bridge |
 | `45a5c2a` | **Fix**: bundle asset index with SSR module so Vercel serverless can read it |
+| `27aac52` | Add deployment.md — full record of GitHub + Vercel deployment |
+
+### Repository rename
+
+Renamed **`bstfsfx/bukaafe-storefront` → `bstfsfx/cafe`** (2026-10-18):
+
+```bash
+gh repo rename cafe -R bstfsfx/bukaafe-storefront --yes
+git remote set-url origin https://github.com/bstfsfx/cafe.git
+```
+
+- GitHub serves a permanent redirect from the old URL, so existing links
+  and clones keep working.
+- The Vercel Git integration follows the repository by ID, so the link
+  to `bstfsfx/cafe` survives the rename and pushes to `main` keep
+  auto-deploying.
+- All in-repo references updated: `package.json` `name`, this file, and
+  the remote URL.
 
 ### Branches
 
@@ -164,7 +182,7 @@ node --env-file=.env preview.ts  # production preview on 3100
 ```bash
 vercel link --yes
 # → Linked to bstfsfxs-projects/bukaafe
-# → Connected GitHub repository: https://github.com/bstfsfx/bukaafe-storefront
+# → Connected GitHub repository: https://github.com/bstfsfx/cafe
 ```
 
 `vercel.json` configures the build:
@@ -514,5 +532,5 @@ vercel inspect https://bukaafe.vercel.app               # deployment metadata
 
 ```bash
 vercel rm bukaafe                # removes the Vercel project
-gh repo delete bstfsfx/bukaafe-storefront --yes   # removes the GitHub repo
+gh repo delete bstfsfx/cafe --yes   # removes the GitHub repo
 ```

@@ -13,3 +13,4 @@ demo-*.png
 .playwright-mcp/
 .vercel
 .env*.local
+deployment.md
