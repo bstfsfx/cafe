@@ -4,10 +4,13 @@
   "version": "1.0.0",
   "type": "module",
   "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "hydrogen skills check --mode=warn && tsx --env-file=.env dev.ts",
     "start": "tsx --env-file=.env dev.ts",
-    "build": "vite build --outDir=dist/client --emptyOutDir && vite build --ssr src/server/handle-request.ts --outDir=dist-server --emptyOutDir",
+    "build": "vite build --outDir=dist/client --emptyOutDir && cp -R public/. dist/client/ && rm -f dist/client/index.html && vite build --ssr src/server/handle-request.ts --outDir=dist-server --emptyOutDir",
     "preview": "vite preview --host 0.0.0.0 --port 3001",
     "typecheck": "tsc --noEmit && hydrogen gql check --fail-on-warn"
   },

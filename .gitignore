@@ -11,3 +11,5 @@ customer-account-graphql-env.d.ts
 # Local demo artifacts (Playwright screenshots, captured during /demo sessions)
 demo-*.png
 .playwright-mcp/
+.vercel
+.env*.local

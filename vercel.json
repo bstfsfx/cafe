@@ -6,9 +6,8 @@
   "outputDirectory": "dist/client",
   "functions": {
     "api/index.ts": {
-      "runtime": "nodejs22.x",
-      "memory": 1024,
-      "maxDuration": 30
+      "memory": 1769,
+      "maxDuration": 60
     }
   },
   "rewrites": [
@@ -16,6 +15,6 @@
   ],
   "headers": [
     { "source": "/assets/(.*)", "headers": [{ "key": "cache-control", "value": "public, max-age=31536000, immutable" }] },
-    { "source": "/(.*\\.(svg|png|jpg|jpeg|webp|gif|ico|woff2?|txt))", "headers": [{ "key": "cache-control", "value": "public, max-age=3600" }] }
+    { "source": "/:file(svg|png|jpg|jpeg|webp|gif|ico|woff2|txt)", "headers": [{ "key": "cache-control", "value": "public, max-age=3600" }] }
   ]
 }
