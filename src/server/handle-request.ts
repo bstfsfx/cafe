@@ -8,7 +8,8 @@ import {
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { App } from "../App";
 import type { AppEnvelope, ShopRuntime } from "../types";
 import { loadPageData } from "./page-data";
@@ -166,6 +167,12 @@ let clientAssets: { stylesheet: string; clientScript: string } | null = null;
  * `/src/styles.css` and `/src/client.tsx` paths so Vite's middleware can
  * transform them on demand; in production we read the hashed asset paths
  * directly from `dist/client/index.html`.
+ *
+ * The asset index lives next to this module's bundle. Vite's SSR build
+ * preserves `import.meta.url`, so we resolve the candidates relative to
+ * `import.meta.url` (the dist-server bundle path) rather than to
+ * `process.cwd()` — `process.cwd()` is unreliable inside serverless
+ * functions where it may not be the function's bundle root.
  */
 function resolveClientAssets(): { stylesheet: string; clientScript: string } | Promise<{ stylesheet: string; clientScript: string }> {
   if (clientAssets) return clientAssets;
@@ -177,9 +184,16 @@ function resolveClientAssets(): { stylesheet: string; clientScript: string } | P
   return (async () => {
     try {
       const { existsSync } = await import("node:fs");
+      // In production the asset index lives next to this module (Vite SSR
+      // build → dist-server/handle-request.js; the build script copies
+      // dist/client/index.html to dist-server/client-assets.html so the
+      // SSR function can read the hashed asset paths from the same bundle).
+      const here = dirname(fileURLToPath(import.meta.url));
       const candidates = [
+        join(here, "client-assets.html"),         // dist-server/client-assets.html (Vercel + local prod)
+        join(here, "..", "client", "index.html"), // dist-server/../client/index.html (legacy build layout)
+        join(here, "..", "dist", "client", "index.html"),
         join(process.cwd(), "dist", "client", "index.html"),
-        join(process.cwd(), "..", "dist", "client", "index.html"),
       ];
       let html: string | null = null;
       for (const candidate of candidates) {
@@ -188,7 +202,7 @@ function resolveClientAssets(): { stylesheet: string; clientScript: string } | P
           break;
         }
       }
-      if (!html) throw new Error("dist/client/index.html not found");
+      if (!html) throw new Error("client-assets.html not found in any candidate path");
       const cssMatch = html.match(/<link[^>]*rel="stylesheet"[^>]*href="(\/assets\/[^"]+)"/);
       const jsMatch = html.match(/<script[^>]*type="module"[^>]*src="(\/assets\/[^"]+)"/);
       clientAssets = {
@@ -196,7 +210,8 @@ function resolveClientAssets(): { stylesheet: string; clientScript: string } | P
         clientScript: jsMatch?.[1] ?? "/src/client.tsx",
       };
       return clientAssets;
-    } catch {
+    } catch (err) {
+      console.error("resolveClientAssets failed:", (err as Error).message);
       clientAssets = { stylesheet: "/src/styles.css", clientScript: "/src/client.tsx" };
       return clientAssets;
     }

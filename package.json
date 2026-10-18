@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "hydrogen skills check --mode=warn && tsx --env-file=.env dev.ts",
     "start": "tsx --env-file=.env dev.ts",
-    "build": "vite build --outDir=dist/client --emptyOutDir && cp -R public/. dist/client/ && rm -f dist/client/index.html && vite build --ssr src/server/handle-request.ts --outDir=dist-server --emptyOutDir",
+    "build": "vite build --outDir=dist/client --emptyOutDir && cp -R public/. dist/client/ && mkdir -p dist-server-tmp && vite build --ssr src/server/handle-request.ts --outDir=dist-server-tmp --emptyOutDir && cp dist-server-tmp/handle-request.js dist-server/ && rm -rf dist-server-tmp && cp dist/client/index.html dist-server/client-assets.html && rm -f dist/client/index.html",
     "preview": "vite preview --host 0.0.0.0 --port 3001",
     "typecheck": "tsc --noEmit && hydrogen gql check --fail-on-warn"
   },
